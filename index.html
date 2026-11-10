@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Taxi Town</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #9fd6ff; }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; touch-action: none; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 2px 4px #0009; font-weight: 800; }
+  #net { top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); font-size: 12px; font-weight: 600; opacity: .9; }
+  #clock { top: calc(max(10px, env(safe-area-inset-top)) + 20px); left: max(12px, env(safe-area-inset-left)); font-size: 18px; }
+  #mini { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 50px); left: max(12px, env(safe-area-inset-left)); width: 136px; height: 136px; border-radius: 14px; border: 2px solid #ffffffcc; background: #2b3242cc; pointer-events: none; }
+  #cash { top: max(10px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); text-align: right; font-size: 34px; line-height: 1; color: #ffd84a; }
+  #cash small { display: block; font-size: 13px; color: #fff; margin-top: 4px; }
+  #ranks { top: calc(max(10px, env(safe-area-inset-top)) + 64px); right: max(14px, env(safe-area-inset-right)); font-size: 13px; text-align: right; }
+  #ranks div { margin-top: 2px; } #ranks i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-left: 6px; vertical-align: -1px; }
+  #ranks .me { color: #ffd84a; }
+  #event { top: calc(max(10px, env(safe-area-inset-top)) + 170px); right: max(14px, env(safe-area-inset-right)); padding: 4px 10px; border-radius: 10px; background: #ff5a5fdd; font-size: 13px; text-shadow: none; }
+  #event:empty { display: none; }
+  #status { left: 16px; right: 16px; top: 17%; text-align: center; font-size: 22px; }
+  #status small { display: block; font-size: 15px; font-weight: 600; margin-top: 2px; }
+  #status .t { color: #ffd84a; } #status .late { color: #ff6b6b; }
+  #toast { left: 16px; right: 16px; top: 30%; text-align: center; font-size: 30px; color: #ffd84a; opacity: 0; transition: opacity .3s, transform .3s; transform: translateY(8px); }
+  #toast.on { opacity: 1; transform: none; }
+  #hint { left: 16px; right: 16px; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 8px); text-align: center; font-size: 14px; font-weight: 700; transition: opacity .6s; }
+  .pad { position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); display: flex; gap: 12px; align-items: flex-end; }
+  .pad button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid #ffffffaa; background: #00000040; color: #fff; font: 900 15px system-ui, sans-serif; touch-action: none; text-shadow: 0 1px 2px #0008; }
+  .pad button.on { background: #ffffff66; }
+  .pad #gas { width: 92px; height: 92px; background: #3ccf6e88; } .pad #brake { background: #ff5a5f77; } .pad #honk { width: 56px; height: 56px; font-size: 12px; }
+  #padR { display: grid; grid-template-columns: auto auto; gap: 10px; align-items: end; justify-items: center; }
+  #honk { grid-column: 1; grid-row: 1; } #brake { grid-column: 1; grid-row: 2; } #gas { grid-column: 2; grid-row: 1 / span 2; }
+  #padL button { width: 70px; height: 70px; }
+  #padL { left: max(16px, env(safe-area-inset-left)); } #padR { right: max(16px, env(safe-area-inset-right)); }
+  #over { position: fixed; inset: 0; display: grid; place-items: center; background: #0007; }
+  .card { width: min(380px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; box-sizing: border-box; padding: 20px; border-radius: 18px; background: #232a3d; border: 1px solid #ffffff2a; text-align: center; }
+  .card h2 { margin: 0 0 4px; font-size: 24px; } .card h3 { margin: 16px 0 4px; font-size: 14px; color: #ffd84a; text-align: left; }
+  .card ol { margin: 0; padding-left: 26px; text-align: left; font-size: 14px; }
+  .card li { margin: 2px 0; } .card li span { float: right; font-variant-numeric: tabular-nums; } .card li.me { color: #ffd84a; font-weight: 800; }
+  .card li i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+  .card p { margin: 8px 0 0; font-size: 14px; opacity: .85; }
+  button.go { width: 100%; min-height: 48px; margin-top: 14px; border: 0; border-radius: 14px; background: #ffd84a; color: #3a2a00; font: 900 17px system-ui, sans-serif; cursor: pointer; }
+  [hidden] { display: none !important; }
+  .attract .hud, .attract #mini, .attract .pad { display: none !important; }
+  @media (max-width: 520px) { #mini { width: 104px; height: 104px; } #cash { font-size: 28px; } #status { top: 25%; font-size: 19px; } #ranks { font-size: 12px; } #hint { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 176px); } }
+</style>
+<script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
+<script type="importmap">{ "imports": { "three": "./libs/three.module.min.js" } }</script>
+</head>
+<body>
+<div class="hud" id="net">Connecting…</div>
+<div class="hud" id="clock"></div>
+<canvas id="mini" width="272" height="272"></canvas>
+<div class="hud" id="cash"></div>
+<div class="hud" id="ranks"></div>
+<div class="hud" id="event"></div>
+<div class="hud" id="status"></div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="hint"></div>
+<div class="pad" id="padL" hidden><button data-k="left">◀</button><button data-k="right">▶</button></div>
+<div class="pad" id="padR" hidden><button id="honk" data-k="honk">HONK</button><button id="brake" data-k="brake">BRAKE</button><button id="gas" data-k="gas">GAS</button></div>
+<div id="over" hidden><div class="card">
+  <h2 id="overTitle">Shift over!</h2><p id="overSub"></p>
+  <h3>This shift</h3><ol id="results"></ol>
+  <h3>Today's top earners</h3><ol id="board"><li>Loading…</li></ol>
+  <button class="go" id="again">Keep driving</button><p id="overNext"></p>
+</div></div>
+<script type="module">
+/* ═══ TAXI TOWN · a Multiplayer Agent starter ═══════════════════════════════════════════
+ * Race other taxis to every fare in town. Drop-in, 2–12 players; bot taxis fill the streets.
+ *
+ * WHERE THINGS ARE (search for the "── " headers):
+ *   CONFIG ........ shift length, car handling, fares, bots
+ *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host, live ops
+ *   TOWN .......... the street grid, blocks, stops, the 12 named places, solid kerbs
+ *   SCENE ......... sky, roads, buildings, signs, parks, trees, street lamps, walkers
+ *   MODELS ........ taxis, passengers, the light beams, the arrow, coins and pop-up text
+ *   DRIVING ....... drive() for your taxi: pedals, steering, bumping into kerbs and other cars
+ *   SHIFT (HOST) .. the shift timer, scores, passengers appearing, pickups, drop-offs, pay
+ *   BOTS (HOST) ... bot taxis: pick a fare, plan a lane route on the grid, follow it "on rails"
+ *   MY TAXI ....... your driving, asking to pick up and drop off, publishing your car
+ *   HUD & RESULTS . cash, the clock, the minimap, status lines, results, the daily board
+ *   INPUT ......... keyboard and touch pads
+ *
+ * HOW THE MULTIPLAYER WORKS (a relay room: no server code):
+ *   - Each player writes its OWN entity: `k` (one JSON field: position, heading, speed)
+ *     about 12 times a second, `n`/`c` (name, color) once and `hb` (heartbeat) once a second.
+ *   - The HOST is the lowest sessionId among live players (heartbeat seen in the last 3s),
+ *     worked out every frame. Only the host writes the shared fields: `shift` (id, v, phase,
+ *     end time, every driver's cash and rides, the results: ONE JSON field, `v` only goes up),
+ *     `fares` (every passenger: where they wait, where they go, who carries them, their
+ *     deadline) and `bots` (the bot taxis, ~10 times a second). A new host adopts all three.
+ *   - Drivers send intents to the host: "pickup" {i} when stopped by a waiting passenger and
+ *     "drop" {i} when stopped at the destination. The host checks the driver's car in state
+ *     and the first valid "pickup" wins. Its own pickups apply directly.
+ *   - Effects are events: "paid" {by, amt, tip, x, z} (coins), "angry" {x, z} (a passenger gave
+ *     up) and "honk". Everything they show is also in state.
+ *   - Timers are timestamps: the shift's end and each ride's deadline.
+ *   - Leaderboard "fares-YYYYMMDD": a new board each day (UTC); your total for the day.
+ *   - Live ops: `fareBonus` multiplies every fare; running events show top right.
+ *   - ?attract plays offline with bots only (the preview video is recorded from it).
+ */
+import * as THREE from "three";
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────────────
+const CONFIG = {
+  grid: 5,               // roads each way: (grid - 1) × (grid - 1) blocks
+  block: 26,             // distance between two roads
+  road: 9,               // road width (two lanes)
+  shiftMs: 150000,       // one shift
+  resultsMs: 10000,      // the results card, then the next shift starts
+  seats: 6,              // bot taxis fill the town up to this many taxis (12 at most fit the shared fields)
+  maxSpeed: 26, accel: 17, brake: 36, reverse: 9, drag: 6, turn: 2.4,
+  botSpeed: 20,          // bots' top speed (a little slower than you)
+  waiting: [4, 9],       // passengers waiting at once: at least / at most (one more per taxi)
+  patienceMs: 45000,     // a waiting passenger gives up after this long
+  stopDist: 4.6,         // how close you must stop to pick up or drop off...
+  stopSpeed: 3,          // ...and how slow
+  baseFare: 6, perUnit: 0.2, // fare = base + per unit of road distance
+  rideTime: [9000, 0.07],// ride time limit: ms + ms per unit of distance (× 1000)
+  tipMax: 0.6,           // a quick ride tips up to this share of the fare
+  fareBonus: 1,          // live ops: multiplies every fare (rush hour!)
+  board: "fares",        // leaderboard prefix: one board a day, e.g. "fares-20261109"
+};
+const BOT_NAMES = ["Zippy", "Rosa", "Mack", "Dot", "Benny", "Lulu", "Gus", "Pepper", "Taz", "Moe", "Nell"];
+const COLORS = ["#ff5a5f", "#3fa7ff", "#3ccf6e", "#b57bff", "#ff8a3d", "#ff6fb5", "#36d6c6", "#1d2b53", "#8bd450", "#e0457b", "#7a5cff", "#a0785a"];
+const RIDERS = ["Mia", "Leo", "Ava", "Sam", "Zoe", "Max", "Ivy", "Ben", "Kim", "Raj", "Ana", "Tom", "Liv", "Eli"];
+const SHIRTS = ["#ff6b6b", "#4dabf7", "#ffd43b", "#69db7c", "#da77f2", "#ffa94d", "#38d9a9", "#f783ac"], SKINS = ["#f5d0b0", "#e0ac7e", "#c68a5a", "#8d5a3b", "#ffe0c4"];
+
+// ── CONNECTION ──────────────────────────────────────────────────────────────────────
+// The builder fills these in for this game. Downloaded from GitHub? Put your own pk_ key here.
+const MP_CONNECT = {
+  key: 'pk_REPLACE_ME',
+  room: 'taxi-town',
+  endpoint: 'wss://live.multiplayeragent.com',
+  apiUrl: 'https://api.multiplayeragent.com',
+};
+const ATTRACT = new URLSearchParams(location.search).has("attract");
+const TEST = new URLSearchParams(location.search).has("test");
+if (ATTRACT) Object.assign(CONFIG, { seats: 7, waiting: [8, 11], patienceMs: 25000 });
+
+/** Same shape as the SDK client, kept in this tab: offline play and ?attract. */
+function localRoom() {
+  const id = "local", state = { entities: { players: { [id]: {} } }, shared: {} }, subs = [];
+  let queued = false;
+  const emit = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; subs.forEach((f) => f(state)); }); } };
+  const put = (o, k, v) => { if (typeof k === "object") Object.assign(o, k); else o[k] = v; emit(); };
+  return {
+    sessionId: id, state, offline: true, live: { config: {}, active: [] },
+    me: { set: (k, v) => put(state.entities.players[id], k, v) },
+    setShared: (k, v) => put(state.shared, k, v),
+    onState: (f) => { subs.push(f); f(state); }, onJoin() {}, onLeave() {}, on() {}, send() {}, onLive() {},
+    onDisconnect() {}, onReconnect() {}, leave: async () => {},
+  };
+}
+async function connect() {
+  if (ATTRACT || typeof MP === "undefined") return localRoom();
+  try {
+    const mp = await Promise.race([MP.join({ ...MP_CONNECT }), new Promise((_, no) => setTimeout(() => no(new Error("timed out")), 10000))]);
+    window.mp = mp; // the builder calls window.mp.leave() when the page closes
+    return mp;
+  } catch (e) {
+    console.warn("Playing offline:", e && e.message);
+    return localRoom();
+  }
+}
+const parse = (v, fb) => { if (typeof v !== "string") return fb; try { return JSON.parse(v); } catch { return fb; } };
+let net = null, S = { entities: { players: {} }, shared: {} }, reconnecting = false;
+const memo = new Map();
+/** A shared JSON field, parsed once per change (read-only: never mutate what this returns). */
+function shared(key, fallback) { const raw = S.shared[key], m = memo.get(key); if (m && m.raw === raw) return m.v; const v = parse(raw, fallback); memo.set(key, { raw, v }); return v; }
+const seenHb = new Map();
+function livePlayers() {
+  const now = performance.now(), out = [];
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const s = seenHb.get(id);
+    if (!s || s.hb !== p.hb) seenHb.set(id, { hb: p.hb, at: now });
+    if (id === net.sessionId || now - seenHb.get(id).at < 3000) out.push(id);
+  }
+  return out.sort();
+}
+const isHost = () => livePlayers()[0] === net.sessionId;
+/** A live-ops tunable: the owner's live config if it has one of the right type, else CONFIG. */
+function liveCfg(k) { const v = net && net.live && net.live.config ? net.live.config[k] : undefined; return typeof v === typeof CONFIG[k] ? v : CONFIG[k]; }
+function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const rnd = (a, b) => a + Math.random() * (b - a), pick = (list) => list[Math.floor(Math.random() * list.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+// ── TOWN ────────────────────────────────────────────────────────────────────────────
+// Roads run along x and z at roadAt(0..grid-1). Between them are blocks (kerb to kerb BLK wide).
+// A "stop" is the kerb lane in the middle of one side of a block: where taxis stop for people.
+const G = CONFIG.grid, B = CONFIG.block, RW = CONFIG.road, HALF = ((G - 1) * B) / 2, EDGE = HALF + RW / 2, BLK = B - RW, LANE = RW / 4;
+const roadAt = (i) => -HALF + i * B;
+const nodeXZ = (n) => ({ x: roadAt(n % G), z: roadAt(Math.floor(n / G)) });
+const BLOCKS = [];
+for (let bj = 0; bj < G - 1; bj++) for (let bi = 0; bi < G - 1; bi++) BLOCKS.push({ bi, bj, cx: roadAt(bi) + B / 2, cz: roadAt(bj) + B / 2, park: false });
+const SOLIDS = BLOCKS.map((b) => ({ x0: b.cx - BLK / 2, x1: b.cx + BLK / 2, z0: b.cz - BLK / 2, z1: b.cz + BLK / 2 }));
+const SIDES = { N: [0, -1], S: [0, 1], W: [-1, 0], E: [1, 0] };
+const STOPS = []; // { x, z: where the taxi stops; px, pz: where the person stands; nx, nz: out of the block; dx, dz: driving direction; from: the node you come from }
+for (const b of BLOCKS) for (const [side, [nx, nz]] of Object.entries(SIDES)) {
+  const kx = b.cx + (nx * BLK) / 2, kz = b.cz + (nz * BLK) / 2, dx = -nz, dz = nx, x = kx + nx * LANE, z = kz + nz * LANE;
+  const ends = nz ? [0, 1].map((k) => b.bi + k + (nz < 0 ? b.bj : b.bj + 1) * G) : [0, 1].map((k) => (nx < 0 ? b.bi : b.bi + 1) + (b.bj + k) * G);
+  const from = ends.find((n) => { const p = nodeXZ(n); return (x - p.x) * dx + (z - p.z) * dz > 0; });
+  STOPS.push({ x, z, px: kx - nx * 0.8, pz: kz - nz * 0.8, nx, nz, dx, dz, from, block: b, side });
+}
+const stopOf = (bi, bj, side) => STOPS.findIndex((s) => s.block.bi === bi && s.block.bj === bj && s.side === side);
+const PLACES = [["CINEMA", "#e0457b", 0, 0, "S"], ["PIZZA", "#ff7a2f", 1, 0, "S"], ["HOTEL", "#7a5cff", 2, 0, "S"], ["BAKERY", "#d9902f", 3, 0, "W"],
+  ["LIBRARY", "#3f7fd0", 0, 1, "E"], ["PARK", "#3ca85a", 1, 1, "N"], ["MALL", "#ff5a8a", 2, 1, "E"], ["GYM", "#e8453c", 3, 1, "S"],
+  ["SCHOOL", "#f0b400", 0, 2, "N"], ["STATION", "#5a6b8c", 1, 3, "N"], ["HOSPITAL", "#2fb7a0", 2, 3, "E"], ["MUSEUM", "#a0785a", 3, 3, "N"]]
+  .map(([name, color, bi, bj, side]) => ({ name, color, stop: stopOf(bi, bj, side) }));
+for (const k of ["1,1", "2,2"]) BLOCKS.find((b) => b.bi + "," + b.bj === k).park = true;
+/** Road distance between two stops (along the grid). */
+const roadDist = (a, b) => Math.abs(STOPS[a].x - STOPS[b].x) + Math.abs(STOPS[a].z - STOPS[b].z);
+
+// ── SCENE ───────────────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog("#cfe9ff", 90, 260);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.5, 1200);
+function fit() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener("resize", fit); addEventListener("orientationchange", fit); fit();
+function canvasTex(w, h, paint, rx, ry) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; paint(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  if (rx) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); }
+  return t;
+}
+const mat = (color, more) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...more });
+const add = (geo, m, x, y, z, shadow = true, parent = scene) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = shadow; o.receiveShadow = true; parent.add(o); return o; };
+const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false, map: canvasTex(4, 256, (c, w, h) => {
+  const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#3d8fe0"); g.addColorStop(0.45, "#9fd6ff"); g.addColorStop(0.5, "#e6f5ff"); g.addColorStop(1, "#e6f5ff"); c.fillStyle = g; c.fillRect(0, 0, w, h);
+}) })));
+scene.add(new THREE.HemisphereLight("#ffffff", "#7a9a6a", 1.5));
+const sun = new THREE.DirectionalLight("#fff3dc", 2.1);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04;
+Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 220 });
+scene.add(sun, sun.target);
+const SUN_OFF = new THREE.Vector3(40, 80, 25);
+
+// Ground, asphalt, kerbs and lane paint.
+const grassTex = canvasTex(64, 64, (c, w, h) => { c.fillStyle = "#86c766"; c.fillRect(0, 0, w, h); for (let i = 0; i < 300; i++) { c.fillStyle = Math.random() < 0.5 ? "#7bbd5c" : "#92d070"; c.fillRect(Math.random() * w, Math.random() * h, 3, 3); } }, 80, 80);
+add(new THREE.PlaneGeometry(1400, 1400).rotateX(-Math.PI / 2), mat("#ffffff", { map: grassTex }), 0, -0.02, 0, false);
+const asphalt = canvasTex(64, 64, (c, w, h) => { c.fillStyle = "#5b616e"; c.fillRect(0, 0, w, h); for (let i = 0; i < 260; i++) { c.fillStyle = `rgba(255,255,255,${Math.random() * 0.07})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }, 30, 30);
+add(new THREE.PlaneGeometry(EDGE * 2, EDGE * 2).rotateX(-Math.PI / 2), mat("#ffffff", { map: asphalt, roughness: 0.95 }), 0, 0, 0, false);
+const kerbMat = mat("#d8d3c6"), lotMat = mat("#c9c3b4"), parkMat = mat("#ffffff", { map: grassTex });
+for (const b of BLOCKS) {
+  add(new THREE.BoxGeometry(BLK, 0.3, BLK), kerbMat, b.cx, 0.15, b.cz, false);
+  add(new THREE.BoxGeometry(BLK - 3, 0.34, BLK - 3), b.park ? parkMat : lotMat, b.cx, 0.17, b.cz, false);
+}
+// Dashed center lines between crossings, and zebra crossings at every crossing.
+const dashes = [], zebras = [];
+for (let i = 0; i < G; i++) for (let s = 0; s < G - 1; s++) for (let t = RW / 2 + 2; t < B - RW / 2 - 1; t += 4) { dashes.push([roadAt(i), roadAt(s) + t, 0]); dashes.push([roadAt(s) + t, roadAt(i), 1]); }
+for (let i = 0; i < G; i++) for (let j = 0; j < G; j++) for (const [dx, dz] of Object.values(SIDES)) {
+  const cx = roadAt(i) + dx * (RW / 2 + 1), cz = roadAt(j) + dz * (RW / 2 + 1);
+  if (Math.abs(cx) > EDGE || Math.abs(cz) > EDGE) continue;
+  for (let k = -3; k <= 3; k++) zebras.push([cx + (dz ? k * 1.2 : 0), cz + (dx ? k * 1.2 : 0), dx ? 1 : 0]);
+}
+const dashMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.28, 0.04, 2), new THREE.MeshBasicMaterial({ color: "#ffd84a" }), dashes.length);
+dashes.forEach(([x, z, r], k) => dashMesh.setMatrixAt(k, M4.compose(V.set(x, 0.02, z), Q.setFromAxisAngle(UP, r ? Math.PI / 2 : 0), SC.set(1, 1, 1))));
+const zebraMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.6, 0.04, 2.2), new THREE.MeshBasicMaterial({ color: "#f4f4f4" }), zebras.length);
+zebras.forEach(([x, z, r], k) => zebraMesh.setMatrixAt(k, M4.compose(V.set(x, 0.02, z), Q.setFromAxisAngle(UP, r ? Math.PI / 2 : 0), SC.set(1, 1, 1))));
+scene.add(dashMesh, zebraMesh);
+
+// Buildings: four per block, taller downtown, each with windows; named places get a sign.
+const PALETTE = ["#f2a65a", "#f6d186", "#a8d5ba", "#8ecae6", "#f4978e", "#c9b6e4", "#ffd6a5", "#b5e48c", "#e9c46a", "#90be6d", "#f9c74f", "#ffadad"];
+const winTex = canvasTex(64, 64, (c) => {
+  c.fillStyle = "#fff"; c.fillRect(0, 0, 64, 64);
+  c.fillStyle = "#33415c"; c.fillRect(10, 14, 17, 24); c.fillRect(37, 14, 17, 24);
+  c.fillStyle = "#9fd6ff66"; c.fillRect(10, 14, 6, 24); c.fillRect(37, 14, 6, 24);
+  c.fillStyle = "#0000001a"; c.fillRect(0, 58, 64, 6);
+});
+const roofMat = mat("#8a8f9c"), seeded = mulberry32(42);
+for (const b of BLOCKS) {
+  if (b.park) continue;
+  const downtown = 1 - Math.max(Math.abs(b.cx), Math.abs(b.cz)) / HALF;
+  for (const [ox, oz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const w = 5.2 + seeded() * 1.2, h = 4 + seeded() * 5 + downtown * 7 * seeded(), t = winTex.clone();
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(Math.round(w / 2.6), Math.max(1, Math.round(h / 3))); t.needsUpdate = true;
+    const x = b.cx + ox * 3.5, z = b.cz + oz * 3.5;
+    add(new THREE.BoxGeometry(w, h, w), mat(PALETTE[Math.floor(seeded() * PALETTE.length)], { map: t }), x, 0.34 + h / 2, z);
+    add(new THREE.BoxGeometry(w + 0.3, 0.35, w + 0.3), roofMat, x, 0.34 + h + 0.17, z);
+    if (seeded() < 0.5) add(new THREE.BoxGeometry(1.2, 0.8, 1.2), mat("#c7ccd6"), x + (seeded() - 0.5) * 2, 0.34 + h + 0.75, z + (seeded() - 0.5) * 2);
+  }
+}
+const signTex = (text, color) => canvasTex(512, 128, (c, w, h) => {
+  c.fillStyle = color; c.beginPath(); c.roundRect(4, 4, w - 8, h - 8, 26); c.fill(); c.lineWidth = 8; c.strokeStyle = "#ffffff"; c.stroke();
+  c.fillStyle = "#fff"; c.font = "900 76px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(text, w / 2, h / 2 + 4);
+});
+for (const p of PLACES) {
+  const s = STOPS[p.stop], b = s.block, face = b.park ? BLK / 2 - 1.2 : 6.8;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75), new THREE.MeshBasicMaterial({ map: signTex(p.name, p.color) }));
+  sign.position.set(b.cx + s.nx * (face + 0.06), b.park ? 2.6 : 4.2, b.cz + s.nz * (face + 0.06)); sign.rotation.y = Math.atan2(s.nx, s.nz); scene.add(sign);
+  if (b.park) { for (const k of [-3, 3]) add(new THREE.CylinderGeometry(0.12, 0.12, 2.6, 6), mat("#555"), sign.position.x + s.nz * k * 0.95, 1.3, sign.position.z - s.nx * k * 0.95); }
+  else add(new THREE.BoxGeometry(Math.abs(s.nz) * 8 + 0.6, 0.25, Math.abs(s.nx) * 8 + 0.6), mat(p.color), b.cx + s.nx * (face + 0.5), 3.05, b.cz + s.nz * (face + 0.5));
+  p.x = s.x; p.z = s.z;
+}
+// Parks: trees and a pond. Trees outside town too. Street lamps on the corners.
+const trees = [];
+for (const b of BLOCKS.filter((k) => k.park)) for (let k = 0; k < 14; k++) { const a = seeded() * 6.28, r = 2.5 + seeded() * 3.8; trees.push([b.cx + Math.cos(a) * r, b.cz + Math.sin(a) * r, 0.7 + seeded() * 0.4]); }
+for (let k = 0; k < 160; k++) { const a = seeded() * 6.28, r = EDGE + 6 + seeded() * 70; trees.push([Math.cos(a) * r, Math.sin(a) * r, 0.9 + seeded() * 0.8]); }
+const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.8, 0), mat("#4caf50", { flatShading: true }), trees.length);
+const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.35, 1.8, 6), mat("#7a5230"), trees.length);
+trees.forEach(([x, z, s], k) => { crowns.setMatrixAt(k, M4.compose(V.set(x, 2.6 * s + 0.3, z), Q.identity(), SC.set(s, s * 1.1, s))); crowns.setColorAt(k, new THREE.Color(["#4caf50", "#5cbf60", "#3e9e4a", "#7cc35a"][k % 4])); trunks.setMatrixAt(k, M4.compose(V.set(x, 0.9 * s + 0.3, z), Q.identity(), SC.set(s, s, s))); });
+crowns.castShadow = trunks.castShadow = true; scene.add(crowns, trunks);
+for (const b of BLOCKS.filter((k) => k.park)) { add(new THREE.CylinderGeometry(2.4, 2.4, 0.1, 24), mat("#5ab4e8", { roughness: 0.2 }), b.cx + 1.5, 0.4, b.cz - 1.5, false); }
+const lamps = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.12, 4.2, 6), mat("#3b4150"), BLOCKS.length * 4);
+const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.28, 10, 8), new THREE.MeshBasicMaterial({ color: "#fff6c8" }), BLOCKS.length * 4);
+BLOCKS.forEach((b, i) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz], k) => { const x = b.cx + sx * (BLK / 2 - 0.6), z = b.cz + sz * (BLK / 2 - 0.6); lamps.setMatrixAt(i * 4 + k, M4.makeTranslation(x, 2.4, z)); bulbs.setMatrixAt(i * 4 + k, M4.makeTranslation(x, 4.5, z)); }));
+lamps.castShadow = true; scene.add(lamps, bulbs);
+// Walkers on the pavements: just for life, the same path on every screen.
+const walkers = Array.from({ length: 26 }, (_, k) => { const s = mulberry32(300 + k), b = BLOCKS[Math.floor(s() * BLOCKS.length)]; return { b, t: s() * 4, sp: (0.05 + s() * 0.04) * (s() < 0.5 ? 1 : -1), shirt: SHIRTS[k % SHIRTS.length], skin: SKINS[k % SKINS.length] }; });
+const walkBody = new THREE.InstancedMesh(new THREE.BoxGeometry(0.55, 1.2, 0.35), mat("#ffffff"), walkers.length), walkHead = new THREE.InstancedMesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), mat("#ffffff"), walkers.length);
+walkers.forEach((w, k) => { walkBody.setColorAt(k, new THREE.Color(w.shirt)); walkHead.setColorAt(k, new THREE.Color(w.skin)); });
+walkBody.castShadow = true; scene.add(walkBody, walkHead);
+function walkersTick(dt, t) {
+  const r = BLK / 2 - 0.7;
+  walkers.forEach((w, k) => {
+    w.t = (((w.t + w.sp * dt) % 4) + 4) % 4; const side = Math.floor(w.t), f = w.t - side, a = -r + f * 2 * r;
+    const [x, z] = [[a, -r], [r, a], [-a, r], [-r, -a]][side], bob = Math.abs(Math.sin(t * 8 + k)) * 0.08;
+    walkBody.setMatrixAt(k, M4.makeTranslation(w.b.cx + x, 0.95 + bob, w.b.cz + z)); walkHead.setMatrixAt(k, M4.makeTranslation(w.b.cx + x, 1.78 + bob, w.b.cz + z));
+  });
+  walkBody.instanceMatrix.needsUpdate = walkHead.instanceMatrix.needsUpdate = true;
+}
+
+// ── MODELS ──────────────────────────────────────────────────────────────────────────
+const yellow = mat("#ffc72c", { roughness: 0.45 }), glass = mat("#26324a", { roughness: 0.15, metalness: 0.3, transparent: true, opacity: 0.55 }), tyre = mat("#1d1f24"), chrome = mat("#e8e8e8", { metalness: 0.5, roughness: 0.3 });
+const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 14).rotateZ(Math.PI / 2);
+const taxiSign = (color) => canvasTex(128, 48, (c, w, h) => { c.fillStyle = color; c.fillRect(0, 0, w, h); c.fillStyle = "#fff"; c.font = "900 30px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("TAXI", w / 2, h / 2 + 2); });
+const tagTex = (name) => canvasTex(256, 64, (c) => { c.font = "bold 34px system-ui, sans-serif"; c.textAlign = "center"; c.lineWidth = 6; c.strokeStyle = "#000a"; c.strokeText(name, 128, 44); c.fillStyle = "#fff"; c.fillText(name, 128, 44); });
+function makeTaxi(color, name) {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const stripe = mat(color);
+  add(new THREE.BoxGeometry(2.3, 0.75, 4.4), yellow, 0, 0.75, 0, true, body);
+  add(new THREE.BoxGeometry(2.0, 0.7, 2.3), glass, 0, 1.45, -0.25, true, body);
+  add(new THREE.BoxGeometry(2.06, 0.14, 2.36), yellow, 0, 1.85, -0.25, true, body);
+  add(new THREE.BoxGeometry(2.34, 0.2, 3.6), stripe, 0, 0.82, 0, false, body);
+  const sign = add(new THREE.BoxGeometry(0.95, 0.38, 0.42), new THREE.MeshBasicMaterial({ map: taxiSign(color) }), 0, 2.1, -0.25, false, body);
+  add(new THREE.BoxGeometry(2.0, 0.25, 0.1), chrome, 0, 0.55, 2.22, false, body);
+  for (const s of [-0.75, 0.75]) { add(new THREE.BoxGeometry(0.42, 0.22, 0.08), new THREE.MeshBasicMaterial({ color: "#fffbe0" }), s, 0.9, 2.21, false, body); add(new THREE.BoxGeometry(0.42, 0.2, 0.08), new THREE.MeshBasicMaterial({ color: "#ff3b3b" }), s, 0.9, -2.21, false, body); }
+  const wheels = [[-1.12, 1.35], [1.12, 1.35], [-1.12, -1.35], [1.12, -1.35]].map(([x, z]) => add(wheelGeo, tyre, x, 0.45, z, true, g));
+  const rider = new THREE.Group(); rider.position.set(0.45, 0, -0.85); body.add(rider); rider.visible = false; // a passenger in the back seat
+  add(new THREE.BoxGeometry(0.55, 0.45, 0.4), mat("#4dabf7"), 0, 1.25, 0, false, rider); add(new THREE.BoxGeometry(0.4, 0.4, 0.4), mat("#f5d0b0"), 0, 1.62, 0, false, rider);
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 4.8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: "#000", transparent: true, opacity: 0.22, depthWrite: false })); shadow.position.y = 0.03; g.add(shadow);
+  if (name) { const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTex(name), depthTest: false })); tag.scale.set(5, 1.25, 1); tag.position.y = 3.4; g.add(tag); }
+  scene.add(g);
+  return { g, body, wheels, rider, sign, spin: 0 };
+}
+/** Pose a taxi: position, heading, wheel spin and a little body roll. */
+function poseTaxi(m, x, z, h, v, dt, carrying, roll = 0) {
+  m.g.position.set(x, 0, z); m.g.rotation.y = h; m.spin += (v * dt) / 0.45;
+  for (const w of m.wheels) w.rotation.x = m.spin;
+  m.body.rotation.z += (roll - m.body.rotation.z) * Math.min(1, dt * 8); m.rider.visible = !!carrying;
+}
+// Passengers: a little person waving at the kerb, a gold beam overhead so you can see them from afar.
+const beamGeo = new THREE.CylinderGeometry(0.7, 0.7, 26, 16, 1, true).translate(0, 13, 0);
+const beamGold = new THREE.MeshBasicMaterial({ color: "#ffc21a", transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide, fog: false });
+const beamGreen = new THREE.MeshBasicMaterial({ color: "#2ee86a", transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide, fog: false });
+const coinTex = canvasTex(64, 64, (c) => { c.fillStyle = "#ffcf3a"; c.beginPath(); c.arc(32, 32, 28, 0, 7); c.fill(); c.lineWidth = 5; c.strokeStyle = "#c98a00"; c.stroke(); c.fillStyle = "#a86a00"; c.font = "900 36px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("$", 32, 34); });
+function makePerson(shirt, skin) {
+  const g = new THREE.Group();
+  add(new THREE.BoxGeometry(0.5, 0.75, 0.32), mat("#3b4258"), 0, 0.72, 0, true, g);
+  add(new THREE.BoxGeometry(0.66, 0.8, 0.4), mat(shirt), 0, 1.48, 0, true, g);
+  add(new THREE.BoxGeometry(0.48, 0.48, 0.48), mat(skin), 0, 2.15, 0, true, g);
+  const arm = new THREE.Group(); arm.position.set(0.42, 1.8, 0); g.add(arm); add(new THREE.BoxGeometry(0.18, 0.7, 0.18), mat(shirt), 0, 0.3, 0, true, arm);
+  const beam = new THREE.Mesh(beamGeo, beamGold); g.add(beam);
+  const coin = new THREE.Sprite(new THREE.SpriteMaterial({ map: coinTex, depthTest: false })); coin.scale.set(1.3, 1.3, 1); coin.position.y = 3.6; g.add(coin);
+  scene.add(g);
+  return { g, arm, beam, coin };
+}
+// My destination: a green beam and a ring on the road. The arrow over my taxi points to my next stop.
+const goal = new THREE.Group();
+goal.add(new THREE.Mesh(beamGeo, beamGreen));
+const goalRing = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.3, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: "#5dff8a", transparent: true, opacity: 0.8, depthWrite: false })); goalRing.position.y = 0.06; goal.add(goalRing);
+goal.visible = false; scene.add(goal);
+const arrowShape = new THREE.Shape([new THREE.Vector2(0, 1.5), new THREE.Vector2(0.9, 0.2), new THREE.Vector2(0.35, 0.2), new THREE.Vector2(0.35, -1), new THREE.Vector2(-0.35, -1), new THREE.Vector2(-0.35, 0.2), new THREE.Vector2(-0.9, 0.2)]);
+const arrow = new THREE.Mesh(new THREE.ExtrudeGeometry(arrowShape, { depth: 0.25, bevelEnabled: false }).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: "#ffd84a" }));
+arrow.visible = false; scene.add(arrow);
+// Coins burst on a drop-off; pop-up text rises; dust puffs on bumps.
+const PMAX = 240, parts = [];
+const partMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.28, 0.28, 0.08, 10).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.4, roughness: 0.3 }), PMAX);
+partMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PMAX * 3), 3); partMesh.frustumCulled = false; partMesh.count = 0; scene.add(partMesh);
+function burst(x, y, z, n, color, speed = 5, up = 8) { const c = new THREE.Color(color); for (let i = 0; i < n && parts.length < PMAX; i++) parts.push({ x, y, z, vx: rnd(-speed, speed), vy: rnd(up * 0.5, up), vz: rnd(-speed, speed), life: rnd(0.8, 1.4), c, r: rnd(0, 6) }); }
+const pops = [];
+function popText(text, x, y, z, color = "#ffd84a") {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(256, 96, (c) => { c.font = "900 64px system-ui, sans-serif"; c.textAlign = "center"; c.lineWidth = 10; c.strokeStyle = "#3a2a00"; c.strokeText(text, 128, 70); c.fillStyle = color; c.fillText(text, 128, 70); }), depthTest: false, transparent: true }));
+  s.scale.set(7, 2.6, 1); s.position.set(x, y, z); scene.add(s); pops.push({ s, life: 1.8 });
+}
+function effectsTick(dt, t) {
+  let i = 0;
+  for (let n = parts.length - 1; n >= 0; n--) {
+    const p = parts[n]; p.life -= dt; p.vy -= 20 * dt; p.x += p.vx * dt; p.y = Math.max(0.1, p.y + p.vy * dt); p.z += p.vz * dt; p.r += dt * 9;
+    if (p.life <= 0) { parts.splice(n, 1); continue; }
+    partMesh.setMatrixAt(i, M4.compose(V.set(p.x, p.y, p.z), Q.setFromAxisAngle(UP, p.r), SC.setScalar(Math.min(1, p.life * 2)))); partMesh.setColorAt(i++, p.c);
+  }
+  partMesh.count = i; partMesh.instanceMatrix.needsUpdate = true; if (i) partMesh.instanceColor.needsUpdate = true;
+  for (let n = pops.length - 1; n >= 0; n--) { const p = pops[n]; p.life -= dt; p.s.position.y += dt * 2.2; p.s.material.opacity = Math.min(1, p.life * 1.5); if (p.life <= 0) { scene.remove(p.s); p.s.material.map.dispose(); pops.splice(n, 1); } }
+}
+
+// ── DRIVING ─────────────────────────────────────────────────────────────────────────
+/** One step of a car: inp = { gas, brake, steer (-1..1) }. Returns how hard it hit a kerb (0 = no bump). */
+function drive(car, inp, dt, top) {
+  if (inp.gas) car.v += CONFIG.accel * dt * (car.v < 0 ? 2.5 : 1);
+  else if (inp.brake) car.v -= (car.v > 0.5 ? CONFIG.brake : CONFIG.accel * 0.6) * dt;
+  else car.v -= Math.sign(car.v) * Math.min(Math.abs(car.v), CONFIG.drag * dt);
+  car.v = clamp(car.v, -CONFIG.reverse, top);
+  const grip = clamp(Math.abs(car.v) / 6, 0, 1) * Math.sign(car.v) * (1 - Math.min(0.3, Math.abs(car.v) / 90));
+  car.h = wrap(car.h + inp.steer * CONFIG.turn * grip * dt);
+  car.x += Math.sin(car.h) * car.v * dt; car.z += Math.cos(car.h) * car.v * dt;
+  return collide(car);
+}
+/** Keep a car (a circle) off the kerbs and inside town. Losing speed depends on how square-on it hit. */
+function collide(car) {
+  const r = 1.5; let hit = 0;
+  const push = (nx, nz, depth) => { car.x += nx * depth; car.z += nz * depth; const into = -(Math.sin(car.h) * nx + Math.cos(car.h) * nz) * Math.sign(car.v); if (into > 0.05) { hit = Math.max(hit, Math.abs(car.v) * into); car.v *= 1 - into * 0.75; } };
+  for (const s of SOLIDS) {
+    const cx = clamp(car.x, s.x0, s.x1), cz = clamp(car.z, s.z0, s.z1), dx = car.x - cx, dz = car.z - cz, d = Math.hypot(dx, dz);
+    if (d >= r) continue;
+    if (d > 1e-4) push(dx / d, dz / d, r - d);
+    else { const o = [[-1, 0, car.x - s.x0 + r], [1, 0, s.x1 - car.x + r], [0, -1, car.z - s.z0 + r], [0, 1, s.z1 - car.z + r]].sort((a, b) => a[2] - b[2])[0]; push(o[0], o[1], o[2]); }
+  }
+  const lim = EDGE - r;
+  if (car.x > lim) push(-1, 0, car.x - lim); if (car.x < -lim) push(1, 0, -lim - car.x);
+  if (car.z > lim) push(0, -1, car.z - lim); if (car.z < -lim) push(0, 1, -lim - car.z);
+  return hit;
+}
+/** Bump your car away from the others (each player moves only its own car). */
+function separate(car, others) {
+  for (const o of others) { const dx = car.x - o.x, dz = car.z - o.z, d = Math.hypot(dx, dz); if (d < 3.4 && d > 0.01) { car.x += (dx / d) * (3.4 - d) * 0.5; car.z += (dz / d) * (3.4 - d) * 0.5; car.v *= 0.98; } }
+}
+
+// ── SHIFT (HOST) ────────────────────────────────────────────────────────────────────
+// The shift: { id, v, ph: "on" | "end", ends, sc: { id: [cash, rides] }, res: [[name, cash, rides, color, id]] }
+// A fare:    { i, p: pickup stop, d: place, st: "w" (waiting) | "r" (riding), by, t: since, due, time, pay, n: rider name, s: shirt, k: skin }
+const host = { was: false, last: null, fares: new Map(), next: 1, dirtyF: false, lastF: 0, bots: new Map(), lastB: 0, spawnAt: 0 };
+const hosting = () => isHost() && host.was;
+function shift() { const r = shared("shift", null); return host.last && hosting() && (!r || host.last.v > r.v) ? host.last : r; }
+function writeShift(r) { r = { ...r, v: (shift()?.v ?? 0) + 1 }; host.last = r; net.setShared("shift", JSON.stringify(r)); return r; }
+/** Every passenger: the host's live list, or the last one it published. The field packs each fare as an array. */
+const FARE_KEYS = ["i", "p", "d", "st", "by", "t", "due", "time", "pay", "n", "s", "k"];
+const packFares = (list) => JSON.stringify(list.map((f) => FARE_KEYS.map((k) => f[k])));
+const faresMemo = { raw: undefined, v: [] };
+function unpackFares(raw) {
+  if (raw !== faresMemo.raw) { faresMemo.raw = raw; faresMemo.v = parse(raw, []).filter(Array.isArray).map((a) => Object.fromEntries(FARE_KEYS.map((k, j) => [k, a[j]]))); }
+  return faresMemo.v;
+}
+const fareList = () => (hosting() ? [...host.fares.values()] : unpackFares(S.shared.fares));
+/** Every car, as { id, x, z, h, v, bot }: people from their entities, bots from the host. */
+function cars() {
+  const out = [], live = new Set(livePlayers());
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    if (id === net.sessionId) { out.push({ id, x: me.x, z: me.z, h: me.h, v: me.v, name: myName, color: myColor, mine: true }); continue; }
+    const k = parse(p.k, null); if (k && live.has(id)) out.push({ id, x: k.x, z: k.z, h: k.h, v: k.v, name: p.n || "Driver", color: p.c || "#ccc" });
+  }
+  for (const b of botList()) out.push({ id: b.i, x: b.x, z: b.z, h: b.h, v: b.v, name: b.n, color: b.c, bot: true });
+  return out;
+}
+const carOf = (id) => cars().find((c) => c.id === id);
+const carrying = (id) => fareList().find((f) => f.st === "r" && f.by === id);
+function adopt() {
+  host.was = true; host.last = null; host.fares.clear();
+  for (const f of unpackFares(S.shared.fares)) { host.fares.set(f.i, { ...f }); host.next = Math.max(host.next, f.i + 1); }
+  host.bots.clear();
+  for (const b of shared("bots", [])) host.bots.set(b.i, newBot(b.i, { name: b.n, color: b.c, x: b.x, z: b.z, h: b.h, v: b.v }));
+  host.dirtyF = true;
+}
+function spawnFare(now) {
+  const busy = new Set(fareList().map((f) => f.p)), taxis = cars();
+  if (ATTRACT && host.next === 1) { // the preview: the first fare waits just ahead of you, going somewhere close
+    const p = ATTRACT_STOP, from = { x: STOPS[p].x, z: STOPS[p].z, h: Math.atan2(STOPS[p].dx, STOPS[p].dz) };
+    const length = (r) => r.pts.reduce((sum, q, k) => sum + (k ? Math.hypot(q.x - r.pts[k - 1].x, q.z - r.pts[k - 1].z) : 0), 0);
+    const d = PLACES.map((pl, k) => ({ k, len: length(planRoute({ ...from }, pl.stop)) })).filter((o) => o.len >= 30).sort((a, b) => a.len - b.len)[0].k;
+    host.fares.set(1, { i: 1, p, d, st: "w", by: "", t: Date.now() - 1000, due: 0, time: 30000, pay: Math.round(CONFIG.baseFare + roadDist(p, PLACES[d].stop) * CONFIG.perUnit), n: 0, s: 0, k: 0 });
+    host.next = 2; host.dirtyF = true; return;
+  }
+  for (let tries = 0; tries < 30; tries++) {
+    const p = Math.floor(Math.random() * STOPS.length), d = Math.floor(Math.random() * PLACES.length);
+    if (busy.has(p) || PLACES[d].stop === p || roadDist(p, PLACES[d].stop) < 40) continue;
+    if (!ATTRACT && taxis.some((c) => Math.hypot(c.x - STOPS[p].x, c.z - STOPS[p].z) < 8)) continue; // not right under a taxi
+    const dist = roadDist(p, PLACES[d].stop), i = host.next++;
+    host.fares.set(i, { i, p, d, st: "w", by: "", t: Date.now(), due: 0, time: Math.round(CONFIG.rideTime[0] + dist * CONFIG.rideTime[1] * 1000), pay: Math.round(CONFIG.baseFare + dist * CONFIG.perUnit),
+      n: Math.floor(Math.random() * RIDERS.length), s: Math.floor(Math.random() * SHIRTS.length), k: Math.floor(Math.random() * SKINS.length) });
+    host.dirtyF = true; return;
+  }
+}
+/** "pickup" {i}: the first taxi that is stopped by the passenger gets them. */
+function applyPickup(from, m) {
+  const f = host.fares.get(m && m.i), car = carOf(from), r = shift();
+  if (!f || f.st !== "w" || !car || !r || r.ph !== "on" || carrying(from)) return false;
+  const s = STOPS[f.p], slack = from === net.sessionId || host.bots.has(from) ? 1 : 2; // a person's car in state lags a little
+  if (Math.hypot(car.x - s.x, car.z - s.z) > CONFIG.stopDist * slack || Math.abs(car.v) > CONFIG.stopSpeed * slack * 1.5) return false;
+  Object.assign(f, { st: "r", by: from, t: Date.now(), due: Date.now() + f.time }); host.dirtyF = true;
+  return true;
+}
+/** "drop" {i}: at the destination, stopped. Pay the fare plus a tip for the time left. */
+function applyDrop(from, m) {
+  const f = host.fares.get(m && m.i), car = carOf(from), r = shift();
+  if (!f || f.st !== "r" || f.by !== from || !car || !r || r.ph !== "on") return false;
+  const s = STOPS[PLACES[f.d].stop], slack = from === net.sessionId || host.bots.has(from) ? 1 : 2;
+  if (Math.hypot(car.x - s.x, car.z - s.z) > CONFIG.stopDist * slack || Math.abs(car.v) > CONFIG.stopSpeed * slack * 1.5) return false;
+  const amt = Math.round(f.pay * liveCfg("fareBonus")), tip = Math.round(f.pay * CONFIG.tipMax * clamp((f.due - Date.now()) / f.time, 0, 1));
+  const sc = { ...r.sc }, was = sc[from] || [0, 0]; sc[from] = [was[0] + amt + tip, was[1] + 1];
+  writeShift({ ...r, sc });
+  host.fares.delete(f.i); host.dirtyF = true;
+  const fx = { by: from, amt, tip, x: s.x, z: s.z }; net.send("paid", fx); paidFx(fx);
+  return true;
+}
+function hostTick(dt, now) {
+  if (!host.was) adopt();
+  const t = Date.now();
+  let r = shift();
+  if (!r) r = writeShift({ id: 1, ph: "on", ends: t + CONFIG.shiftMs, sc: {}, res: [] });
+  if (r.ph === "on" && t >= r.ends) { // shift over: rank everyone, clear the passengers
+    const res = cars().filter((c) => !(ATTRACT && c.mine)).map((c) => [c.name, (r.sc[c.id] || [0])[0], (r.sc[c.id] || [0, 0])[1], c.color, c.id]).sort((a, b) => b[1] - a[1]);
+    r = writeShift({ ...r, ph: "end", ends: t + CONFIG.resultsMs, res });
+    host.fares.clear(); host.dirtyF = true;
+  }
+  if (r.ph === "end" && t >= r.ends) r = writeShift({ id: r.id + 1, ph: "on", ends: t + CONFIG.shiftMs, sc: {}, res: [] });
+  if (r.ph === "on") {
+    for (const f of [...host.fares.values()]) {
+      if (f.st === "r" && t > f.due) { host.fares.delete(f.i); host.dirtyF = true; const c = carOf(f.by), fx = { by: f.by, x: c ? c.x : 0, z: c ? c.z : 0 }; net.send("angry", fx); angryFx(fx); }
+      else if (f.st === "w" && t - f.t > CONFIG.patienceMs) { host.fares.delete(f.i); host.dirtyF = true; }
+    }
+    const waiting = fareList().filter((f) => f.st === "w").length, want = clamp(cars().length + 2, ...CONFIG.waiting);
+    if (waiting < want && now > host.spawnAt) { spawnFare(now); host.spawnAt = now + (waiting < want - 2 ? 150 : rnd(600, 1600)); }
+  }
+  botsTick(dt, now, r);
+  if (host.dirtyF && now - host.lastF > 200) { host.dirtyF = false; host.lastF = now; net.setShared("fares", packFares(fareList())); }
+  if (now - host.lastB > 100) { host.lastB = now; net.setShared("bots", JSON.stringify(botList().map((b) => ({ ...b, x: +b.x.toFixed(2), z: +b.z.toFixed(2), h: +b.h.toFixed(3), v: +b.v.toFixed(1) })))); }
+}
+
+// ── BOTS (HOST) ─────────────────────────────────────────────────────────────────────
+// Bot taxis drive "on rails": along a path in the right-hand lane with rounded corners, so they
+// never get stuck on a kerb. They slow for corners, queue behind cars going their way, and stop
+// right at the kerb for their passenger.
+function botList() {
+  if (hosting()) return [...host.bots.values()].map((b) => ({ i: b.id, n: b.name, c: b.color, x: b.x, z: b.z, h: b.h, v: b.v }));
+  return shared("bots", []);
+}
+function newBot(id, from) {
+  const used = new Set(cars().map((c) => c.color)), names = new Set([...host.bots.values()].map((b) => b.name)), s = STOPS[Math.floor(Math.random() * STOPS.length)];
+  return { id, name: BOT_NAMES.find((n) => !names.has(n)) || "Cabbie", color: COLORS.find((c) => !used.has(c)) || pick(COLORS), x: s.x, z: s.z, h: Math.atan2(s.dx, s.dz), v: 0,
+    path: null, goal: null, thinkAt: 0, skill: rnd(0.82, 0.95), wait: 0, ...from };
+}
+/** The crossing just ahead of a car, given the road it is on and where it is heading. */
+function nodeAhead(car) {
+  const fx = Math.sin(car.h), fz = Math.cos(car.h), gi = (car.x + HALF) / B, gj = (car.z + HALF) / B;
+  let i = Math.round(gi), j = Math.round(gj);
+  if (Math.abs(fz) > Math.abs(fx)) j = fz > 0 ? Math.floor(gj + 0.25) + 1 : Math.ceil(gj - 0.25) - 1;
+  else i = fx > 0 ? Math.floor(gi + 0.25) + 1 : Math.ceil(gi - 0.25) - 1;
+  return clamp(i, 0, G - 1) + clamp(j, 0, G - 1) * G;
+}
+/** Shortest grid path between two crossings (a list of node numbers), never through `banned`. */
+function gridPath(a, b, banned = -1) {
+  const prev = new Map([[a, -1], [banned, -2]]), queue = [a];
+  while (queue.length) { const n = queue.shift(); if (n === b) break; const i = n % G, j = Math.floor(n / G); for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = i + di, nj = j + dj, m = ni + nj * G; if (ni >= 0 && nj >= 0 && ni < G && nj < G && !prev.has(m)) { prev.set(m, n); queue.push(m); } } }
+  if (!prev.has(b) || prev.get(b) === -2) return [];
+  const out = []; for (let n = b; n >= 0; n = prev.get(n)) out.unshift(n);
+  return out;
+}
+/** The path from a car to a stop: points in the right-hand lane (right of travel = (-dz, dx)), corners rounded. */
+function planRoute(car, si) {
+  const s = STOPS[si], fx = Math.sin(car.h), fz = Math.cos(car.h), pts = [{ x: car.x, z: car.z }];
+  const onSegment = Math.abs((car.x - s.x) * s.nx + (car.z - s.z) * s.nz) < 1.6 && (s.x - car.x) * s.dx + (s.z - car.z) * s.dz > 4 && fx * s.dx + fz * s.dz > 0.7;
+  if (onSegment) { pts.push({ x: s.x, z: s.z }); return { pts, i: 1 }; }
+  const start = nodeAhead(car), sx = start % G, sz = Math.floor(start / G), back = Math.abs(fx) > Math.abs(fz) ? [sx - Math.sign(fx), sz] : [sx, sz - Math.sign(fz)];
+  const banned = back[0] >= 0 && back[1] >= 0 && back[0] < G && back[1] < G && start !== s.from ? back[0] + back[1] * G : -1; // no U-turn at the first crossing
+  let nodes = gridPath(start, s.from, banned); if (!nodes.length) nodes = gridPath(start, s.from);
+  let din = Math.abs(fx) > Math.abs(fz) ? { x: Math.sign(fx), z: 0 } : { x: 0, z: Math.sign(fz) };
+  nodes.forEach((n, k) => {
+    const p = nodeXZ(n), q = k + 1 < nodes.length ? nodeXZ(nodes[k + 1]) : { x: p.x + s.dx, z: p.z + s.dz };
+    const dout = { x: Math.sign(Math.round(q.x - p.x)), z: Math.sign(Math.round(q.z - p.z)) };
+    if (k > 0) { const o = nodeXZ(nodes[k - 1]); din = { x: Math.sign(Math.round(p.x - o.x)), z: Math.sign(Math.round(p.z - o.z)) }; }
+    const rin = { x: -din.z, z: din.x }, rout = { x: -dout.z, z: dout.x };
+    if (din.x === dout.x && din.z === dout.z) pts.push({ x: p.x + rin.x * LANE, z: p.z + rin.z * LANE }); // straight on
+    else if (din.x === -dout.x && din.z === -dout.z) { // a U-turn: a half circle in the crossing
+      for (let k2 = 0; k2 <= 6; k2++) { const a = (k2 / 6) * Math.PI, c = Math.cos(a), sn = Math.sin(a); pts.push({ x: p.x + din.x + (rin.x * c + din.x * sn) * LANE, z: p.z + din.z + (rin.z * c + din.z * sn) * LANE, c: true }); }
+    } else { // a corner: a curve from R before the lanes cross to R after
+      const cx = p.x + (rin.x + rout.x) * LANE, cz = p.z + (rin.z + rout.z) * LANE, R = 4, a = { x: cx - din.x * R, z: cz - din.z * R }, b = { x: cx + dout.x * R, z: cz + dout.z * R };
+      for (let k2 = 0; k2 <= 5; k2++) { const t = k2 / 5; pts.push({ x: (1 - t) ** 2 * a.x + 2 * (1 - t) * t * cx + t * t * b.x, z: (1 - t) ** 2 * a.z + 2 * (1 - t) * t * cz + t * t * b.z, c: true }); }
+    }
+    din = dout;
+  });
+  pts.push({ x: s.x, z: s.z });
+  return { pts, i: 1 };
+}
+/** A bot's job: carry its passenger, or go for the nearest free one, or just cruise. */
+function botThink(b, now) {
+  b.thinkAt = now + rnd(400, 900);
+  const mine = carrying(b.id);
+  if (mine) { const si = PLACES[mine.d].stop; if (b.goal?.si !== si || !b.path) { b.goal = { si, drop: mine.i }; b.path = planRoute(b, si); } return; }
+  if (b.goal?.pick && host.fares.get(b.goal.pick)?.st === "w") { if (!b.path) b.path = planRoute(b, b.goal.si); return; } // still going for it
+  const taken = new Set([...host.bots.values()].filter((o) => o !== b && o.goal?.pick).map((o) => o.goal.pick));
+  if (ATTRACT && b !== me) taken.add(1); // the preview's first fare is yours
+  const free = fareList().filter((f) => f.st === "w" && !taken.has(f.i) && Date.now() - f.t > 900).sort((f1, f2) => Math.hypot(STOPS[f1.p].x - b.x, STOPS[f1.p].z - b.z) - Math.hypot(STOPS[f2.p].x - b.x, STOPS[f2.p].z - b.z));
+  if (free.length) { const f = free[Math.random() < 0.75 ? 0 : Math.min(1, free.length - 1)]; b.goal = { si: f.p, pick: f.i }; b.path = planRoute(b, f.p); }
+  else if (!b.path) { const si = Math.floor(Math.random() * STOPS.length); b.goal = { si, cruise: true }; b.path = planRoute(b, si); }
+}
+/** Move a bot along its path: speed up on the straights, slow for corners, queue, stop at the kerb. */
+function botMove(b, dt, now, others) {
+  if (now > b.thinkAt || !b.path) botThink(b, now);
+  const P = b.path;
+  if (!P) { b.v = Math.max(0, b.v - 30 * dt); return; }
+  let rest = 0, toCurve = Infinity, px = b.x, pz = b.z;
+  for (let k = P.i; k < P.pts.length; k++) { const q = P.pts[k]; rest += Math.hypot(q.x - px, q.z - pz); if (q.c && toCurve === Infinity) toCurve = rest; px = q.x; pz = q.z; }
+  let top = CONFIG.botSpeed * b.skill;
+  if (toCurve < 9 || P.pts[P.i]?.c) top = Math.min(top, 8);
+  top = Math.min(top, Math.sqrt(2 * 26 * Math.max(0, rest - 0.2))); // brake to stop right at the kerb
+  const fx = Math.sin(b.h), fz = Math.cos(b.h);
+  const ahead = others.filter((o) => Math.cos(o.h - b.h) > 0.3).map((o) => { const ox = o.x - b.x, oz = o.z - b.z, d = ox * fx + oz * fz; return d > 0 && Math.abs(ox * fz - oz * fx) < 1.9 ? d : Infinity; }).reduce((a, c) => Math.min(a, c), Infinity);
+  if (ahead < 7 && now > (b.passUntil || 0)) top = Math.min(top, Math.max(0, ahead - 4) * 2.5); // queue behind a car going our way
+  b.v += clamp(top - b.v, -36 * dt, 15 * dt);
+  b.wait = b.v < 0.5 && rest > 1 ? b.wait + dt : 0;
+  if (b.wait > 3) { b.wait = 0; b.passUntil = now + 2500; } // stuck in a queue: squeeze past
+  let step = b.v * dt;
+  while (step > 0 && P.i < P.pts.length) {
+    const q = P.pts[P.i], dx = q.x - b.x, dz = q.z - b.z, d = Math.hypot(dx, dz);
+    if (d > 1e-3) b.h += wrap(Math.atan2(dx, dz) - b.h) * Math.min(1, dt * 14);
+    if (d <= step) { b.x = q.x; b.z = q.z; step -= d; P.i++; } else { b.x += (dx / d) * step; b.z += (dz / d) * step; step = 0; }
+  }
+  if ((P.i >= P.pts.length || rest < 0.6) && b.v < 2.5) { // at the kerb: ask the host (that's us)
+    const end = P.pts[P.pts.length - 1]; b.x = end.x; b.z = end.z; b.v = 0; b.path = null;
+    const ok = b.goal?.drop ? applyDrop(b.id, { i: b.goal.drop }) : b.goal?.pick ? applyPickup(b.id, { i: b.goal.pick }) : false;
+    b.goal = ok && b.goal.pick ? b.goal : null; b.thinkAt = now + (ok ? 300 : 0);
+  }
+}
+function botsTick(dt, now, r) {
+  const humans = livePlayers().filter((id) => !(ATTRACT && id === net.sessionId)).length, want = Math.max(0, CONFIG.seats - humans - (ATTRACT ? 1 : 0));
+  while (host.bots.size > want) { const id = [...host.bots.keys()].pop(); for (const f of host.fares.values()) if (f.by === id) host.fares.delete(f.i); host.bots.delete(id); host.dirtyF = true; }
+  while (host.bots.size < want) { const id = "b" + Math.random().toString(36).slice(2, 6); host.bots.set(id, newBot(id)); }
+  const all = cars();
+  for (const b of host.bots.values()) {
+    if (r.ph !== "on") { b.path = null; b.goal = null; b.v = Math.max(0, b.v - 30 * dt); continue; }
+    botMove(b, dt, now, all.filter((c) => c.id !== b.id));
+  }
+}
+
+// ── MY TAXI ─────────────────────────────────────────────────────────────────────────
+const myName = (() => { try { return localStorage.getItem("mpa-name") || ""; } catch { return ""; } })() || pick(["Speedy", "Lucky", "Zoomy", "Sunny", "Rapid", "Cheery"]) + " " + pick(["Cabbie", "Driver", "Wheels", "Rider"]);
+let myColor = COLORS[0];
+const me = { x: 0, z: 0, h: 0, v: 0, roll: 0, lastSend: 0, sent: "", askAt: 0, shiftId: 0, cashSeen: 0, path: null, goal: null, thinkAt: 0, skill: 0.95, wait: 0 }; // path…wait: ?attract's autopilot
+const input = { left: false, right: false, gas: false, brake: false };
+const ATTRACT_STOP = 21; // where ?attract starts you, just behind a waiting passenger
+function spawnMe() {
+  const s = STOPS[(ATTRACT ? ATTRACT_STOP : Math.floor(Math.random() * STOPS.length))];
+  Object.assign(me, { x: s.x - s.dx * 8, z: s.z - s.dz * 8, h: Math.atan2(s.dx, s.dz), v: 0 });
+}
+function myTick(dt, now, r) {
+  if (ATTRACT) { botMove(me, dt, now, cars().filter((c) => !c.mine)); return; } // the preview: you drive like a bot
+  const steer = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+  const hit = drive(me, { gas: input.gas, brake: input.brake, steer }, dt, CONFIG.maxSpeed);
+  separate(me, cars().filter((c) => !c.mine));
+  if (hit > 5) { burst(me.x + Math.sin(me.h) * 2, 0.5, me.z + Math.cos(me.h) * 2, 4, "#c8c8c8", 3, 3); sfx(90, 0.12, "square", 0.05); shake = Math.min(0.5, hit / 30); }
+  me.roll = clamp(-steer * me.v / 60, -0.08, 0.08);
+  askHost(now, r);
+}
+/** Stopped next to a passenger, or at my destination: ask the host (again every 0.4s until it answers in state). */
+function askHost(now, r) {
+  if (!r || r.ph !== "on" || now - me.askAt < 400 || Math.abs(me.v) > CONFIG.stopSpeed) return;
+  const ride = carrying(net.sessionId);
+  if (ride) {
+    const s = STOPS[PLACES[ride.d].stop];
+    if (Math.hypot(me.x - s.x, me.z - s.z) < CONFIG.stopDist) { me.askAt = now; if (isHost()) applyDrop(net.sessionId, { i: ride.i }); else net.send("drop", { i: ride.i }); }
+    return;
+  }
+  const f = fareList().find((f) => f.st === "w" && Math.hypot(me.x - STOPS[f.p].x, me.z - STOPS[f.p].z) < CONFIG.stopDist);
+  if (f) { me.askAt = now; if (isHost()) applyPickup(net.sessionId, { i: f.i }); else net.send("pickup", { i: f.i }); }
+}
+function publish(now) {
+  if (now - me.lastSend < 80) return;
+  const k = JSON.stringify({ x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.v.toFixed(1) });
+  if (k === me.sent && now - me.lastSend < 1000) return;
+  me.lastSend = now; me.sent = k; net.me.set("k", k);
+}
+/** Your cash this shift went up (the host paid you): add it to today's total and the daily board. */
+let day = { day: "", total: 0 }, board = null, lastSubmit = 0;
+const dayKey = () => new Date(Date.now()).toISOString().slice(0, 10).replace(/-/g, "");
+function loadDay() { try { const d = JSON.parse(localStorage.getItem("taxi-town.day") || "null"); day = d && d.day === dayKey() ? d : { day: dayKey(), total: 0 }; } catch { day = { day: dayKey(), total: 0 }; } }
+function trackCash(r) {
+  const mine = (r.sc[net.sessionId] || [0])[0];
+  if (r.id !== me.shiftId) { me.shiftId = r.id; me.cashSeen = mine; return; }
+  if (mine <= me.cashSeen || ATTRACT) return;
+  if (day.day !== dayKey()) day = { day: dayKey(), total: 0 };
+  day.total += mine - me.cashSeen; me.cashSeen = mine;
+  try { localStorage.setItem("taxi-town.day", JSON.stringify(day)); } catch {}
+  if (board && performance.now() - lastSubmit > 10000) { lastSubmit = performance.now(); boardToday().submit(day.total).catch(() => {}); }
+}
+const boardToday = () => board.leaderboard(`${CONFIG.board}-${dayKey()}`);
+
+// ── HUD & RESULTS ───────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+let shake = 0, overFor = -1, startedAt = 0;
+function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 1800); }
+function paidFx(m) {
+  burst(m.x, 1.5, m.z, 30, "#ffcf3a", 6, 12);
+  if (m.by === net.sessionId && !ATTRACT) { toast(`+$${m.amt}${m.tip ? `  (tip $${m.tip})` : ""}`); sfxCash(); } else popText(`+$${m.amt + m.tip}`, m.x, 4, m.z);
+}
+function angryFx(m) { popText("GRR!", m.x, 4, m.z, "#ff6b6b"); if (m.by === net.sessionId) { toast("Too slow! They got out."); sfx(140, 0.35, "sawtooth", 0.05); } }
+function hud(r, now) {
+  if (ATTRACT) return;
+  const n = livePlayers().length, t = Date.now();
+  $("net").textContent = reconnecting ? "Reconnecting…" : net.offline ? "Offline: playing with bots" : `Online · ${n} player${n === 1 ? "" : "s"}${isHost() ? " · you run the town" : ""}`;
+  if (!r) return;
+  $("clock").textContent = r.ph === "on" ? `Shift ${mmss(r.ends - t)}` : "Shift over";
+  const mine = r.sc[net.sessionId] || [0, 0];
+  $("cash").innerHTML = `$${mine[0]}<small>${mine[1]} ride${mine[1] === 1 ? "" : "s"} · today $${day.total}</small>`;
+  const all = cars().map((c) => ({ ...c, cash: (r.sc[c.id] || [0])[0] })).sort((a, b) => b.cash - a.cash).slice(0, 5);
+  $("ranks").innerHTML = all.map((c, k) => `<div class="${c.mine ? "me" : ""}">${k + 1}. ${esc(c.mine ? "You" : c.name)} $${c.cash}<i style="background:${esc(c.color)}"></i></div>`).join("");
+  // what to do now
+  const ride = carrying(net.sessionId);
+  let html = "";
+  if (r.ph !== "on") html = "";
+  else if (ride) {
+    const p = PLACES[ride.d], left = ride.due - t, d = Math.hypot(me.x - p.x, me.z - p.z);
+    html = `${esc(RIDERS[ride.n] || "Rider")} → <span style="color:${p.color}">${p.name}</span> <span class="${left < 8000 ? "late" : "t"}">${mmss(left)}</span><small>${d < 12 ? "Stop in the green ring" : "Follow the arrow and the green light"}</small>`;
+  } else {
+    const near = fareList().filter((f) => f.st === "w").map((f) => ({ f, d: Math.hypot(me.x - STOPS[f.p].x, me.z - STOPS[f.p].z) })).sort((a, b) => a.d - b.d)[0];
+    html = near && near.d < 12 ? `Stop next to them!<small>Brake right beside the person waving</small>` : `Find a fare<small>Follow the arrow to someone waving under a gold light</small>`;
+  }
+  $("status").innerHTML = html;
+  if (!startedAt) startedAt = now;
+  $("hint").style.opacity = now - startedAt < 14000 ? 1 : 0;
+  $("hint").textContent = touchUI ? "◀ ▶ to steer · GAS and BRAKE · HONK to say hi" : "WASD or arrows to drive · Space to brake · H to honk";
+  // results
+  $("over").hidden = r.ph !== "end" || overFor === r.id;
+  if (r.ph === "end") {
+    $("overSub").textContent = `You made $${(r.res.find((x) => x[4] === net.sessionId) || [0, 0])[1]} this shift · $${day.total} today`;
+    $("results").innerHTML = r.res.map((x) => `<li class="${x[4] === net.sessionId ? "me" : ""}"><i style="background:${esc(x[3])}"></i>${esc(x[4] === net.sessionId ? "You" : x[0])} <small>· ${x[2]} ride${x[2] === 1 ? "" : "s"}</small><span>$${x[1]}</span></li>`).join("");
+    $("overNext").textContent = `Next shift in ${Math.max(0, Math.ceil((r.ends - t) / 1000))}s`;
+    if (showBoard.for !== r.id) { showBoard.for = r.id; showBoard(); }
+  }
+}
+function showBoard() {
+  const list = $("board");
+  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  (day.total ? boardToday().submit(day.total).catch(() => null) : Promise.resolve()).then(() => boardToday().top(10)).then(({ entries }) => {
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Driver")}<span>$${e.score}</span></li>`).join("") : "<li>No fares yet today. Be the first!</li>";
+  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+}
+// The minimap: roads, places, waiting passengers (gold), your destination (green), taxis.
+const mini = $("mini"), mc = mini.getContext("2d");
+function drawMini() {
+  if (ATTRACT) return;
+  const W = mini.width, k = (W - 16) / (EDGE * 2), X = (x) => 8 + (x + EDGE) * k, Z = (z) => 8 + (z + EDGE) * k;
+  mc.clearRect(0, 0, W, W); mc.strokeStyle = "#8a93a8"; mc.lineWidth = RW * k;
+  for (let i = 0; i < G; i++) { mc.beginPath(); mc.moveTo(X(roadAt(i)), Z(-HALF)); mc.lineTo(X(roadAt(i)), Z(HALF)); mc.moveTo(X(-HALF), Z(roadAt(i))); mc.lineTo(X(HALF), Z(roadAt(i))); mc.stroke(); }
+  const ride = carrying(net.sessionId);
+  for (const f of fareList()) if (f.st === "w") { mc.fillStyle = "#ffd84a"; mc.beginPath(); mc.arc(X(STOPS[f.p].x), Z(STOPS[f.p].z), 7, 0, 7); mc.fill(); }
+  if (ride) { const p = PLACES[ride.d]; mc.strokeStyle = "#5dff8a"; mc.lineWidth = 5; mc.beginPath(); mc.arc(X(p.x), Z(p.z), 12, 0, 7); mc.stroke(); }
+  for (const c of cars()) {
+    mc.save(); mc.translate(X(c.x), Z(c.z)); mc.rotate(-c.h + Math.PI);
+    mc.fillStyle = c.mine ? "#ffffff" : c.color; mc.beginPath(); mc.moveTo(0, -11); mc.lineTo(8, 8); mc.lineTo(-8, 8); mc.closePath(); mc.fill();
+    if (c.mine) { mc.strokeStyle = "#000"; mc.lineWidth = 2; mc.stroke(); }
+    mc.restore();
+  }
+}
+let audio = null;
+const wakeAudio = () => { if (!audio) try { audio = new AudioContext(); } catch {} else if (audio.state === "suspended") audio.resume(); };
+function sfx(freq, dur, type = "square", vol = 0.04, slideTo = 0) {
+  if (!audio || ATTRACT) return;
+  try {
+    const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t); if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur);
+  } catch {}
+}
+const sfxCash = () => { sfx(1320, 0.08, "square", 0.04); setTimeout(() => sfx(1760, 0.18, "square", 0.04), 80); };
+const sfxHonk = (vol = 0.05) => { sfx(392, 0.28, "sawtooth", vol); sfx(494, 0.28, "sawtooth", vol * 0.8); };
+
+// ── INPUT ───────────────────────────────────────────────────────────────────────────
+const touchUI = matchMedia("(pointer: coarse)").matches && !ATTRACT;
+$("padL").hidden = $("padR").hidden = !touchUI;
+const KEYS = { ArrowLeft: "left", a: "left", A: "left", ArrowRight: "right", d: "right", D: "right", ArrowUp: "gas", w: "gas", W: "gas", ArrowDown: "brake", s: "brake", S: "brake", " ": "brake" };
+function honk() {
+  if (performance.now() - (honk.at || 0) < 600) return; honk.at = performance.now();
+  net.send("honk", {}); honkFx(net.sessionId);
+}
+addEventListener("keydown", (e) => { wakeAudio(); const k = KEYS[e.key]; if (k) { e.preventDefault(); input[k] = true; } if (e.key === "h" || e.key === "H") honk(); });
+addEventListener("keyup", (e) => { const k = KEYS[e.key]; if (k) input[k] = false; });
+addEventListener("blur", () => { for (const k in input) input[k] = false; });
+for (const b of document.querySelectorAll(".pad button")) {
+  const k = b.dataset.k, on = (v) => { if (k === "honk") { if (v) honk(); } else input[k] = v; b.classList.toggle("on", v); };
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); wakeAudio(); b.setPointerCapture(e.pointerId); on(true); });
+  for (const ev of ["pointerup", "pointercancel"]) b.addEventListener(ev, () => on(false));
+}
+$("again").onclick = () => { overFor = shift()?.id ?? -1; };
+document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+renderer.domElement.addEventListener("pointerdown", (e) => { e.preventDefault(); wakeAudio(); });
+
+// ── MAIN LOOP ───────────────────────────────────────────────────────────────────────
+const views = new Map(), people = new Map(); // id -> taxi model, fare id -> person model
+const honks = new Map();
+function honkFx(id) { honks.set(id, performance.now()); const c = carOf(id); if (c) popText("HONK!", c.x, 4.2, c.z, "#ffffff"); if (c && Math.hypot(c.x - me.x, c.z - me.z) < 60) sfxHonk(id === net.sessionId ? 0.05 : 0.03); }
+let last = performance.now(), lastHb = 0, lastHud = 0, lastMini = 0, myTaxi = null;
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
+function frame(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)), t = now / 1000; last = now;
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
+  if (isHost()) hostTick(dt, now); else host.was = false;
+  const r = shift();
+  if (r) trackCash(r);
+  myTick(dt, now, r); publish(now);
+  // other taxis: people from their entities (predicted from speed and heading, then eased), bots from the host
+  const seen = new Set(), live = new Set(livePlayers()), riders = new Map(fareList().filter((f) => f.st === "r").map((f) => [f.by, f]));
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    if (id === net.sessionId || !live.has(id)) continue;
+    const k = parse(p.k, null); if (!k) continue;
+    seen.add(id); place(viewOf(id, p.c || "#ccc", p.n || "Driver"), k, dt, riders.has(id));
+  }
+  for (const b of botList()) { seen.add(b.i); const v = viewOf(b.i, b.c, b.n); if (hosting()) { v.x = b.x; v.z = b.z; v.h = b.h; v.v = b.v; poseTaxi(v.m, b.x, b.z, b.h, b.v, dt, riders.has(b.i)); } else place(v, b, dt, riders.has(b.i)); }
+  for (const [id, v] of views) if (!seen.has(id)) { scene.remove(v.m.g); views.delete(id); }
+  if (!myTaxi || myTaxi.color !== myColor) { if (myTaxi) scene.remove(myTaxi.g); myTaxi = makeTaxi(myColor, ""); myTaxi.color = myColor; }
+  poseTaxi(myTaxi, me.x, me.z, me.h, me.v, dt, riders.has(net.sessionId), me.roll);
+  drawPassengers(t);
+  guide(t);
+  walkersTick(dt, t); effectsTick(dt, t);
+  // chase camera, a little higher on a tall screen (and for the ?attract preview, so it sees more of the chase)
+  const tall = camera.aspect < 1, back = tall ? 18 : ATTRACT ? 15 : 15, up = tall ? 15 : ATTRACT ? 15 : 11;
+  const fx = Math.sin(me.h), fz = Math.cos(me.h);
+  camPos.set(me.x - fx * back, up, me.z - fz * back);
+  camera.position.lerp(camPos, 1 - Math.pow(ATTRACT ? 0.02 : 0.004, dt));
+  camLook.lerp(V.set(me.x + fx * 9, 0, me.z + fz * 9), 1 - Math.pow(ATTRACT ? 0.01 : 0.0005, dt));
+  camera.lookAt(camLook);
+  if (shake > 0) { camera.position.x += rnd(-shake, shake); camera.position.y += rnd(-shake, shake); shake = Math.max(0, shake - dt * 1.5); }
+  sun.position.set(me.x + SUN_OFF.x, SUN_OFF.y, me.z + SUN_OFF.z); sun.target.position.set(me.x, 0, me.z);
+  renderer.render(scene, camera);
+  if (now - lastHud > 100) { lastHud = now; hud(r, now); }
+  if (now - lastMini > 150) { lastMini = now; drawMini(); }
+  requestAnimationFrame(frame);
+}
+function viewOf(id, color, name) {
+  let v = views.get(id);
+  if (v && v.color !== color) { scene.remove(v.m.g); v = null; views.delete(id); } // they changed color
+  if (!v) { v = { m: makeTaxi(color, ATTRACT ? "" : name), color, x: 0, z: 0, h: 0, v: 0, fresh: true, raw: "", at: 0 }; views.set(id, v); }
+  return v;
+}
+/** Ease another car toward where it should be now: its last report plus how far it has driven since. */
+function place(v, k, dt, isCarrying) {
+  const raw = k.x + "," + k.z + "," + k.h;
+  if (raw !== v.raw) { v.raw = raw; v.at = performance.now(); }
+  const age = Math.min(0.3, (performance.now() - v.at) / 1000), px = k.x + Math.sin(k.h) * k.v * age, pz = k.z + Math.cos(k.h) * k.v * age;
+  if (v.fresh || Math.hypot(px - v.x, pz - v.z) > 15) { v.x = px; v.z = pz; v.h = k.h; v.fresh = false; }
+  const e = 1 - Math.pow(0.001, dt);
+  v.x += (px - v.x) * e; v.z += (pz - v.z) * e; v.h += wrap(k.h - v.h) * e; v.v = k.v;
+  poseTaxi(v.m, v.x, v.z, v.h, v.v, dt, isCarrying);
+}
+/** Waiting passengers wave at the kerb; anyone riding is a head in the back seat. */
+function drawPassengers(t) {
+  const seen = new Set();
+  for (const f of fareList()) {
+    if (f.st !== "w") continue;
+    let p = people.get(f.i);
+    if (!p) { p = makePerson(SHIRTS[f.s] || SHIRTS[0], SKINS[f.k] || SKINS[0]); people.set(f.i, p); const s = STOPS[f.p]; p.g.position.set(s.px, 0.34, s.pz); p.g.rotation.y = Math.atan2(s.nx, s.nz); p.born = t; }
+    seen.add(f.i);
+    p.arm.rotation.z = Math.PI - 0.4 + Math.sin(t * 9 + f.i) * 0.45;
+    p.coin.position.y = 3.6 + Math.sin(t * 3 + f.i) * 0.25; p.coin.material.rotation = Math.sin(t * 2 + f.i) * 0.3;
+    p.g.scale.setScalar(Math.min(1, (t - p.born) * 3));
+  }
+  for (const [i, p] of people) if (!seen.has(i)) { scene.remove(p.g); people.delete(i); }
+}
+/** The arrow over my taxi and the green light at my destination. */
+function guide(t) {
+  const ride = carrying(net.sessionId), r = shift();
+  let target = null;
+  if (ride) target = PLACES[ride.d];
+  else { const near = fareList().filter((f) => f.st === "w").map((f) => STOPS[f.p]).sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z))[0]; if (near) target = near; }
+  goal.visible = !!ride && !ATTRACT;
+  if (ride) { goal.position.set(target.x, 0, target.z); goalRing.scale.setScalar(1 + Math.sin(t * 5) * 0.06); }
+  arrow.visible = !!target && !ATTRACT && r?.ph === "on" && Math.hypot(target.x - me.x, target.z - me.z) > 9;
+  if (arrow.visible) { arrow.position.set(me.x, 3.6 + Math.sin(t * 4) * 0.15, me.z); arrow.rotation.y = Math.atan2(target.x - me.x, target.z - me.z); arrow.material.color.set(ride ? "#5dff8a" : "#ffd84a"); }
+}
+/** Two people joined at once in one color: the one with the higher sessionId picks a free one (bots' colors count as taken). */
+function fixColor() {
+  const others = Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId), bots = botList();
+  if (!others.some(([id, p]) => p.c === myColor && id < net.sessionId) && !bots.some((b) => b.c === myColor)) return;
+  const taken = new Set([...others.map(([, p]) => p.c), ...bots.map((b) => b.c)]);
+  myColor = COLORS.find((c) => !taken.has(c)) || myColor; net.me.set("c", myColor);
+}
+
+(async function start() {
+  document.body.classList.toggle("attract", ATTRACT);
+  net = await connect();
+  net.onState((st) => { S = st; });
+  net.on("pickup", (m, from) => { if (isHost()) applyPickup(from, m); });
+  net.on("drop", (m, from) => { if (isHost()) applyDrop(from, m); });
+  net.on("paid", (m) => { if (m && typeof m.x === "number") paidFx(m); });
+  net.on("angry", (m) => { if (m && typeof m.x === "number") angryFx(m); });
+  net.on("honk", (m, from) => honkFx(from));
+  net.onDisconnect(() => { reconnecting = true; $("net").textContent = "Reconnecting…"; });
+  net.onReconnect(() => { reconnecting = false; });
+  net.onLive((live) => { $("event").textContent = (live && live.active || []).map((e) => e.title).join(" · "); });
+  if (!net.offline && typeof MP !== "undefined") board = MP.auth({ key: MP_CONNECT.key, apiUrl: MP_CONNECT.apiUrl });
+  loadDay();
+  const taken = new Set([...Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([, p]) => p.c), ...shared("bots", []).map((b) => b.c)]);
+  myColor = COLORS.find((c) => !taken.has(c)) || pick(COLORS);
+  spawnMe(); me.id = net.sessionId;
+  net.me.set({ n: myName, c: myColor, hb: Date.now() });
+  camera.position.set(me.x - Math.sin(me.h) * 14, 9, me.z - Math.cos(me.h) * 14); camLook.set(me.x, 1, me.z);
+  if (TEST) window.__test = { me, input, S: () => S, shift, writeShift, fareList, cars, botList, isHost, STOPS, PLACES, planRoute, day: () => day };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

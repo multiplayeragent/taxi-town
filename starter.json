@@ -1,0 +1,22 @@
+{
+  "name": "Taxi Town",
+  "genre": "sim",
+  "dim": "3D",
+  "mode": "Drop-in",
+  "players": "2–12",
+  "hook": "Race other taxis to every fare in town.",
+  "how": "Drive your taxi around a little town. Stop next to someone waving to pick them up (the first taxi to stop gets them), then drop them at the place they ask for before their timer runs out. Faster rides tip more. Each shift ranks the drivers, and today's best earners go on the board.",
+  "controls": "WASD or arrow keys to drive, Space to brake, H to honk; on a phone, the steering and pedal buttons",
+  "uses": [
+    ["Leaderboard", "Today's top earners: a fresh board every day."],
+    ["Bots", "Bot taxis compete for fares until enough people join."],
+    ["Host-run rules", "The host's browser places the passengers, decides who stopped first and pays the fares; if it leaves, the next player takes over."],
+    ["Host-run rounds", "Shifts of two and a half minutes with a results card between them."],
+    ["Live ops", "Turn on rush hour (bigger fares) without touching the code."]
+  ],
+  "ideas": [
+    "Add rival police cars that slow you down",
+    "Make it a snowy town with slippery roads",
+    "Let players buy faster taxis with their earnings"
+  ]
+}
