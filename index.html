@@ -801,6 +801,7 @@ function honkFx(id) { honks.set(id, performance.now()); const c = carOf(id); if 
 let last = performance.now(), lastHb = 0, lastHud = 0, lastMini = 0, myTaxi = null;
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 function frame(now) {
+  requestAnimationFrame(frame);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)), t = now / 1000; last = now;
   if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
   if (isHost()) hostTick(dt, now); else host.was = false;
@@ -833,7 +834,6 @@ function frame(now) {
   renderer.render(scene, camera);
   if (now - lastHud > 100) { lastHud = now; hud(r, now); }
   if (now - lastMini > 150) { lastMini = now; drawMini(); }
-  requestAnimationFrame(frame);
 }
 function viewOf(id, color, name) {
   let v = views.get(id);
