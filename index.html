@@ -37,7 +37,7 @@
   .card { width: min(380px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; box-sizing: border-box; padding: 20px; border-radius: 18px; background: #232a3d; border: 1px solid #ffffff2a; text-align: center; }
   .card h2 { margin: 0 0 4px; font-size: 24px; } .card h3 { margin: 16px 0 4px; font-size: 14px; color: #ffd84a; text-align: left; }
   .card ol { margin: 0; padding-left: 26px; text-align: left; font-size: 14px; }
-  .card li { margin: 2px 0; } .card li span { float: right; font-variant-numeric: tabular-nums; } .card li.me { color: #ffd84a; font-weight: 800; }
+  .card li { margin: 2px 0; } .card li.msg { list-style: none; margin-left: -26px; opacity: .8; } .card li span { float: right; font-variant-numeric: tabular-nums; } .card li.me { color: #ffd84a; font-weight: 800; }
   .card li i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
   .card p { margin: 8px 0 0; font-size: 14px; opacity: .85; }
   button.go { width: 100%; min-height: 48px; margin-top: 14px; border: 0; border-radius: 14px; background: #ffd84a; color: #3a2a00; font: 900 17px system-ui, sans-serif; cursor: pointer; }
@@ -63,7 +63,7 @@
 <div id="over" hidden><div class="card">
   <h2 id="overTitle">Shift over!</h2><p id="overSub"></p>
   <h3>This shift</h3><ol id="results"></ol>
-  <h3>Today's top earners</h3><ol id="board"><li>Loading…</li></ol>
+  <h3>Today's top earners</h3><ol id="board"><li class="msg">Loading…</li></ol>
   <button class="go" id="again">Keep driving</button><p id="overNext"></p>
 </div></div>
 <script type="module">
@@ -304,7 +304,7 @@ for (const p of PLACES) {
 // Parks: trees and a pond. Trees outside town too. Street lamps on the corners.
 const trees = [];
 for (const b of BLOCKS.filter((k) => k.park)) for (let k = 0; k < 14; k++) { const a = seeded() * 6.28, r = 2.5 + seeded() * 3.8; trees.push([b.cx + Math.cos(a) * r, b.cz + Math.sin(a) * r, 0.7 + seeded() * 0.4]); }
-for (let k = 0; k < 160; k++) { const a = seeded() * 6.28, r = EDGE + 6 + seeded() * 70; trees.push([Math.cos(a) * r, Math.sin(a) * r, 0.9 + seeded() * 0.8]); }
+for (let k = 0; k < 160; k++) { const a = seeded() * 6.28, r = EDGE + 6 + seeded() * 70, x = Math.cos(a) * r, z = Math.sin(a) * r, out = Math.max(1, (EDGE + 6) / Math.max(Math.abs(x), Math.abs(z))); trees.push([x * out, z * out, 0.9 + seeded() * 0.8]); } // out: near a corner the circle cuts into town, so push those trees back out past the edge
 const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.8, 0), mat("#4caf50", { flatShading: true }), trees.length);
 const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.35, 1.8, 6), mat("#7a5230"), trees.length);
 trees.forEach(([x, z, s], k) => { crowns.setMatrixAt(k, M4.compose(V.set(x, 2.6 * s + 0.3, z), Q.identity(), SC.set(s, s * 1.1, s))); crowns.setColorAt(k, new THREE.Color(["#4caf50", "#5cbf60", "#3e9e4a", "#7cc35a"][k % 4])); trunks.setMatrixAt(k, M4.compose(V.set(x, 0.9 * s + 0.3, z), Q.identity(), SC.set(s, s, s))); });
@@ -341,7 +341,8 @@ function makeTaxi(color, name) {
   add(new THREE.BoxGeometry(2.0, 0.7, 2.3), glass, 0, 1.45, -0.25, true, body);
   add(new THREE.BoxGeometry(2.06, 0.14, 2.36), yellow, 0, 1.85, -0.25, true, body);
   add(new THREE.BoxGeometry(2.34, 0.2, 3.6), stripe, 0, 0.82, 0, false, body);
-  const sign = add(new THREE.BoxGeometry(0.95, 0.38, 0.42), new THREE.MeshBasicMaterial({ map: taxiSign(color) }), 0, 2.1, -0.25, false, body);
+  const signFace = new THREE.MeshBasicMaterial({ map: taxiSign(color) }), signEdge = new THREE.MeshBasicMaterial({ color });
+  const sign = add(new THREE.BoxGeometry(0.95, 0.38, 0.42), [signEdge, signEdge, signEdge, signEdge, signFace, signFace], 0, 2.1, -0.25, false, body); // TAXI on the front and back only (on top it read upside down)
   add(new THREE.BoxGeometry(2.0, 0.25, 0.1), chrome, 0, 0.55, 2.22, false, body);
   for (const s of [-0.75, 0.75]) { add(new THREE.BoxGeometry(0.42, 0.22, 0.08), new THREE.MeshBasicMaterial({ color: "#fffbe0" }), s, 0.9, 2.21, false, body); add(new THREE.BoxGeometry(0.42, 0.2, 0.08), new THREE.MeshBasicMaterial({ color: "#ff3b3b" }), s, 0.9, -2.21, false, body); }
   const wheels = [[-1.12, 1.35], [1.12, 1.35], [-1.12, -1.35], [1.12, -1.35]].map(([x, z]) => add(wheelGeo, tyre, x, 0.45, z, true, g));
@@ -614,9 +615,11 @@ function botMove(b, dt, now, others) {
   top = Math.min(top, Math.sqrt(2 * 26 * Math.max(0, rest - 0.2))); // brake to stop right at the kerb
   const fx = Math.sin(b.h), fz = Math.cos(b.h);
   const ahead = others.filter((o) => Math.cos(o.h - b.h) > 0.3).map((o) => { const ox = o.x - b.x, oz = o.z - b.z, d = ox * fx + oz * fz; return d > 0 && Math.abs(ox * fz - oz * fx) < 1.9 ? d : Infinity; }).reduce((a, c) => Math.min(a, c), Infinity);
-  if (ahead < 7 && now > (b.passUntil || 0)) top = Math.min(top, Math.max(0, ahead - 4) * 2.5); // queue behind a car going our way
+  if (ahead < 8 && now > (b.passUntil || 0)) top = Math.min(top, Math.max(0, ahead - 5.2) * 2.5); // queue behind a car going our way (a car is 4.4 long: leave a gap)
   b.v += clamp(top - b.v, -36 * dt, 15 * dt);
   b.wait = b.v < 0.5 && rest > 1 ? b.wait + dt : 0;
+  if (b.wait > 1.5 && !b.honked && b !== me) { b.honked = true; net.send("honk", { by: b.id }); honkFx(b.id); } // stuck behind someone: honk, like you can
+  if (b.v > 3) b.honked = false;
   if (b.wait > 3) { b.wait = 0; b.passUntil = now + 2500; } // stuck in a queue: squeeze past
   let step = b.v * dt;
   while (step > 0 && P.i < P.pts.length) {
@@ -740,10 +743,10 @@ function hud(r, now) {
 }
 function showBoard() {
   const list = $("board");
-  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  if (!board) { list.innerHTML = "<li class=\"msg\">Leaderboards need a connection.</li>"; return; }
   (day.total ? boardToday().submit(day.total).catch(() => null) : Promise.resolve()).then(() => boardToday().top(10)).then(({ entries }) => {
-    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Driver")}<span>$${e.score}</span></li>`).join("") : "<li>No fares yet today. Be the first!</li>";
-  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Driver")}<span>$${e.score}</span></li>`).join("") : "<li class=\"msg\">No fares yet today. Be the first!</li>";
+  }).catch(() => { list.innerHTML = "<li class=\"msg\">Couldn't load the leaderboard.</li>"; });
 }
 // The minimap: roads, places, waiting passengers (gold), your destination (green), taxis.
 const mini = $("mini"), mc = mini.getContext("2d");
@@ -897,7 +900,7 @@ function fixColor() {
   net.on("drop", (m, from) => { if (isHost()) applyDrop(from, m); });
   net.on("paid", (m) => { if (m && typeof m.x === "number") paidFx(m); });
   net.on("angry", (m) => { if (m && typeof m.x === "number") angryFx(m); });
-  net.on("honk", (m, from) => honkFx(from));
+  net.on("honk", (m, from) => honkFx(m && typeof m.by === "string" ? m.by : from)); // a bot's honk names the bot
   net.onDisconnect(() => { reconnecting = true; $("net").textContent = "Reconnecting…"; });
   net.onReconnect(() => { reconnecting = false; });
   net.onLive((live) => { $("event").textContent = (live && live.active || []).map((e) => e.title).join(" · "); });
